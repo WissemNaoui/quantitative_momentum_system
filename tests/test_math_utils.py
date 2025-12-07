@@ -3,11 +3,19 @@ Quick test to verify the math_utils module works correctly.
 """
 
 import sys
-sys.path.insert(0, '/home/wissem/.gemini/antigravity/scratch/quantitative_momentum_system/src')
-
-import numpy as np
+import os
 import pandas as pd
-from math_utils import calculate_trend_quality
+import numpy as np
+
+# --- DYNAMIC PATH FIX ---
+# Get the absolute path of the directory containing this script
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Get the parent directory (project root)
+project_root = os.path.dirname(current_dir)
+# Add project root to path so we can import 'src'
+sys.path.insert(0, project_root)
+
+from src.math_utils import calculate_trend_quality
 
 
 def test_uptrend():
@@ -69,6 +77,7 @@ def test_flat():
     print(f"  Slope: {slope:.6f}")
     print(f"  R²: {r2:.6f}")
     
+    # Use abs() because slope could be -0.0000001
     assert abs(slope) < 0.001, "Slope should be near zero"
     assert abs(score) < 0.001, "Score should be near zero"
     print("  ✅ PASS\n")
@@ -79,11 +88,18 @@ if __name__ == "__main__":
     print("Testing math_utils.calculate_trend_quality()")
     print("=" * 60 + "\n")
     
-    test_uptrend()
-    test_downtrend()
-    test_noisy_trend()
-    test_flat()
-    
-    print("=" * 60)
-    print("✅ All tests passed!")
-    print("=" * 60)
+    try:
+        test_uptrend()
+        test_downtrend()
+        test_noisy_trend()
+        test_flat()
+        print("=" * 60)
+        print("✅ All tests passed!")
+        print("=" * 60)
+    except AssertionError as e:
+        print("\n❌ TEST FAILED!")
+        print(e)
+        exit(1)
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}")
+        exit(1)
