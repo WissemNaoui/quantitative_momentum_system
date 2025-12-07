@@ -4,13 +4,6 @@ Momentum Strategy Backtester
 This module validates the ROC² trend quality metric using historical data.
 It runs a grid search over different lookback windows and holding periods,
 tracking performance with MLflow.
-
-The strategy:
-1. Every N days, score all tickers using calculate_trend_quality()
-2. Buy the highest-scoring ticker (if score > 0)
-3. Hold for H days, then repeat
-
-This proves whether the metric has predictive power.
 """
 
 import yfinance as yf
@@ -22,15 +15,10 @@ import os
 import pickle
 from src.math_utils import calculate_trend_quality
 
-
 class MomentumBacktester:
     def __init__(self, tickers, start_date="2024-01-01"):
         """
         Initialize backtester with a universe of stocks.
-        
-        Args:
-            tickers: List of ticker symbols to trade
-            start_date: Start date for historical data (YYYY-MM-DD)
         """
         self.tickers = tickers
         self.start_date = start_date
@@ -38,10 +26,7 @@ class MomentumBacktester:
 
     def fetch_data(self):
         """
-        Download historical price data with smart fallback strategy:
-        1. Try cache first (fast)
-        2. Try FinancialDatasets.ai (reliable, no rate limits)
-        3. Fallback to YFinance if FD API key not set
+        Download historical price data with smart fallback strategy.
         """
         # Create cache filename based on tickers and date
         cache_dir = ".cache"
@@ -78,56 +63,32 @@ class MomentumBacktester:
                 with open(cache_file, 'wb') as f:
                     pickle.dump(self.data, f)
                 print(f"💾 Cached to: {cache_file}")
-                
                 return self
                 
             except Exception as e:
                 print(f"⚠️  FinancialDatasets.ai failed: {e}")
                 print("🔄 Falling back to Yahoo Finance...")
-        else:
-            print("ℹ️  FD_API_KEY not set, using Yahoo Finance")
-            print("   (Set FD_API_KEY for better reliability)")
         
         # 3. Fallback to YFinance
         print(f"📥 Fetching history for {len(self.tickers)} tickers from YFinance...")
-        
         try:
-            # Download Close prices only
             self.data = yf.download(self.tickers, start=self.start_date, progress=False)['Close']
-            
-            # Handle single ticker case (yfinance returns Series instead of DataFrame)
             if len(self.tickers) == 1:
                 self.data = pd.DataFrame({self.tickers[0]: self.data})
-            
-            # Forward fill missing data and drop any remaining NaNs
             self.data = self.data.ffill().dropna()
             
-            print(f"✅ Downloaded {len(self.data)} days of data")
-            
-            # Save to cache
             with open(cache_file, 'wb') as f:
                 pickle.dump(self.data, f)
             print(f"💾 Cached to: {cache_file}")
             
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to fetch data from both FinancialDatasets.ai and YFinance!\n"
-                f"Error: {e}\n"
-                f"Solution: Set FD_API_KEY environment variable for reliable data access."
-            )
+            raise RuntimeError(f"Failed to fetch data! Error: {e}")
         
         return self
 
     def run(self, lookback_window=20, holding_period=10):
         """
         Run backtest with specified parameters.
-        
-        Args:
-            lookback_window: Number of days to calculate trend quality over
-            holding_period: Number of days to hold each position
-            
-        Returns:
-            tuple: (final_portfolio_value, equity_curve_list)
         """
         dates = self.data.index
         cash = 10000
@@ -138,7 +99,7 @@ class MomentumBacktester:
         for i in range(lookback_window, len(dates) - holding_period, holding_period):
             current_date = dates[i]
             
-            # 1. Get window of past data (no look-ahead bias)
+            # 1. Get window of past data
             window = self.data.iloc[i-lookback_window:i]
             
             # 2. Score every ticker using our ROC² metric
@@ -148,7 +109,6 @@ class MomentumBacktester:
                     score, slope, r2 = calculate_trend_quality(window[ticker])
                     scores[ticker] = score
                 except Exception as e:
-                    # Ticker might have missing data in this window
                     continue
             
             # 3. Pick Winner (Highest Score)
@@ -179,20 +139,37 @@ class MomentumBacktester:
             
             equity_curve.append(cash)
         
-        # Store trades for analysis
         self.trades = pd.DataFrame(trades)
-        
         return cash, equity_curve
 
+def calculate_sharpe(equity_curve, holding_period):
+    """
+    Calculates Annualized Sharpe Ratio based on period returns.
+    """
+    if len(equity_curve) < 2:
+        return 0.0
+        
+    # Convert list to Series to calculate pct_change
+    curve_series = pd.Series(equity_curve)
+    returns = curve_series.pct_change().dropna()
+    
+    if returns.std() == 0:
+        return 0.0
+    
+    # Annualize based on how often we trade
+    # If holding_period is 10 days, we have approx 25.2 periods per year
+    trading_days_per_year = 252
+    periods_per_year = trading_days_per_year / holding_period
+    
+    # Sharpe = (Mean Return / Std Dev) * Sqrt(Periods)
+    sharpe = (returns.mean() / returns.std()) * np.sqrt(periods_per_year)
+    return sharpe
 
 def run_experiment():
     """
     Run MLflow experiment to find optimal parameters.
-    
-    This tests different combinations of lookback windows and holding periods
-    to find which settings maximize returns.
     """
-    # Test on a mix of tech stocks (you can customize this universe)
+    # Test on a mix of tech stocks (expanded universe recommended)
     universe = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'AMD', 'META', 'GOOGL']
     
     print("=" * 60)
@@ -217,19 +194,21 @@ def run_experiment():
                 # Log parameters
                 mlflow.log_param("lookback", lb)
                 mlflow.log_param("holding", hp)
-                mlflow.log_param("universe_size", len(universe))
                 
                 # Run backtest
                 final_val, curve = backtester.run(lb, hp)
                 
-                # Calculate metrics
+                # --- CALCULATE METRICS ---
                 roi = (final_val - 10000) / 10000
                 max_equity = max(curve)
                 drawdown = (max_equity - final_val) / max_equity if max_equity > 0 else 0
                 
+                # Calculate Sharpe
+                sharpe = calculate_sharpe(curve, hp)
+                
                 # Log metrics
                 mlflow.log_metric("total_roi", roi)
-                mlflow.log_metric("final_value", final_val)
+                mlflow.log_metric("sharpe_ratio", sharpe) # <--- NEW
                 mlflow.log_metric("max_drawdown", drawdown)
                 mlflow.log_metric("num_trades", len(backtester.trades))
                 
@@ -237,7 +216,7 @@ def run_experiment():
                 plt.figure(figsize=(10, 6))
                 plt.plot(curve, linewidth=2)
                 plt.axhline(y=10000, color='gray', linestyle='--', alpha=0.5, label='Initial Capital')
-                plt.title(f"Equity Curve (Lookback={lb}, Hold={hp})\nFinal ROI: {roi:.2%}")
+                plt.title(f"L={lb}, H={hp} | ROI: {roi:.1%} | Sharpe: {sharpe:.2f}")
                 plt.xlabel("Trade Number")
                 plt.ylabel("Portfolio Value ($)")
                 plt.legend()
@@ -247,34 +226,30 @@ def run_experiment():
                 mlflow.log_artifact("curve.png")
                 plt.close()
                 
-                # Save trade log
-                if len(backtester.trades) > 0:
-                    backtester.trades.to_csv("trades.csv", index=False)
-                    mlflow.log_artifact("trades.csv")
-                
                 results.append({
                     'lookback': lb,
                     'holding': hp,
                     'roi': roi,
-                    'final_value': final_val,
-                    'trades': len(backtester.trades)
+                    'sharpe': sharpe,
+                    'final_value': final_val
                 })
                 
-                print(f"   → ROI: {roi:+.2%} | Final: ${final_val:,.0f} | Trades: {len(backtester.trades)}")
+                print(f"   → ROI: {roi:+.2%} | Sharpe: {sharpe:.2f} | Final: ${final_val:,.0f}")
     
     # Print summary
     print("\n" + "=" * 60)
-    print("📈 RESULTS SUMMARY")
+    print("📈 RESULTS SUMMARY (Sorted by Sharpe Ratio)")
     print("=" * 60)
-    results_df = pd.DataFrame(results).sort_values('roi', ascending=False)
+    
+    # Sort by Sharpe Ratio instead of ROI
+    results_df = pd.DataFrame(results).sort_values('sharpe', ascending=False)
     print(results_df.to_string(index=False))
     
     best = results_df.iloc[0]
-    print(f"\n🏆 WINNER: Lookback={int(best['lookback'])}, Holding={int(best['holding'])}")
-    print(f"   ROI: {best['roi']:+.2%}")
-    print(f"\n💡 Update your scanner.py with these parameters!")
-    print("\n✅ Backtesting Complete. Run 'mlflow ui' to explore all runs.")
-
+    print(f"\n🏆 BEST RISK-ADJUSTED: Lookback={int(best['lookback'])}, Holding={int(best['holding'])}")
+    print(f"   Sharpe: {best['sharpe']:.2f}")
+    print(f"   ROI:    {best['roi']:+.2%}")
+    print("\n✅ Backtesting Complete. Run 'mlflow ui' to view charts.")
 
 if __name__ == "__main__":
     run_experiment()
