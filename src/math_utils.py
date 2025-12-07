@@ -1,38 +1,44 @@
 import numpy as np
+import pandas as pd
 from scipy.stats import linregress
 
 def calculate_trend_quality(series):
     """
-    Calculates the 'ROC Squared' metric.
-    
-    This metric combines momentum (slope) with consistency (R²) to identify
-    stocks that are moving up in a smooth, predictable manner.
-    
-    Args:
-        series: A pandas Series of prices (e.g., last 20 days)
-    
-    Returns:
-        tuple: (score, slope, r_squared)
-            - score: The combined metric (slope * R²)
-            - slope: The log-linear trend slope (momentum)
-            - r_squared: Coefficient of determination (smoothness)
-    
-    Theory:
-        - Using log prices converts exponential growth to linear growth
-        - Slope measures the rate of price increase
-        - R² measures how well prices fit a straight line (low noise)
-        - High score = Strong uptrend with low volatility
+    Calculates the 'ROC Squared' metric with error handling.
     """
-    # Use Log prices to handle percentage growth linearly
-    y = np.log(series.values)
-    x = np.arange(len(y))
+    # 1. Input Validation: Need at least 2 points for a line
+    if len(series) < 2:
+        return 0.0, 0.0, 0.0
+        
+    # 2. Handle Data Errors (NaNs or Zeros)
+    # Convert to float and drop NaNs just in case
+    series = series.astype(float).dropna()
     
-    # Linear Regression
-    slope, intercept, r_value, p_value, std_err = linregress(x, y)
-    
-    # Metric: Slope (Momentum) * R^2 (Smoothness)
-    # We want stocks moving UP smoothly.
-    r_squared = r_value ** 2
-    score = slope * r_squared
-    
-    return score, slope, r_squared
+    if len(series) < 2:
+        return 0.0, 0.0, 0.0
+
+    # 3. Log Calculation (Safe Mode)
+    try:
+        # np.log will fail on 0 or negative numbers
+        if (series <= 0).any():
+            return 0.0, 0.0, 0.0
+            
+        y = np.log(series.values)
+        x = np.arange(len(y))
+        
+        # 4. Linear Regression
+        slope, intercept, r_value, p_value, std_err = linregress(x, y)
+        
+        # Check if regression failed (sometimes happens on flat lines)
+        if np.isnan(slope) or np.isnan(r_value):
+            return 0.0, 0.0, 0.0
+        
+        # 5. Calculate Score
+        r_squared = r_value ** 2
+        score = slope * r_squared
+        
+        return score, slope, r_squared
+        
+    except Exception as e:
+        # Log error in a real app, here we just return 0 to skip the ticker
+        return 0.0, 0.0, 0.0
