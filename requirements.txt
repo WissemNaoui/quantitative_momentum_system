@@ -1,0 +1,9 @@
+pandas
+numpy
+yfinance
+requests
+scipy
+matplotlib
+mlflow
+scikit-learn
+pytest

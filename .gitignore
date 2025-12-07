@@ -1,0 +1,14 @@
+# Virtual Environment
+venv/
+__pycache__/
+
+# MLflow and Database files (Usually too large or local specific)
+mlruns/
+mlflow.db
+
+# Generated charts and data (Optional: keep these lines if you DO want to upload them)
+*.png
+*.csv
+
+# System files
+.DS_Store
