@@ -1,0 +1,54 @@
+stages:
+  # Stage 1: Fetch historical data
+  fetch_data:
+    cmd: python -m src.backtester
+    deps:
+      - src/backtester.py
+      - src/math_utils.py
+      - src/fd_loader.py
+    params:
+      - backtester.universe
+      - backtester.start_date
+    outs:
+      - .cache/:
+          cache: true
+          persist: true
+    metrics:
+      - mlflow.db:
+          cache: false
+
+  # Stage 2: Run backtest experiments
+  backtest:
+    cmd: python -m src.backtester
+    deps:
+      - src/backtester.py
+      - src/math_utils.py
+      - .cache/
+    params:
+      - backtester.lookback_windows
+      - backtester.holding_periods
+    outs:
+      - models/:
+          cache: true
+      - trades.csv:
+          cache: false
+    metrics:
+      - mlruns/:
+          cache: false
+    plots:
+      - curve.png:
+          cache: false
+
+  # Stage 3: Run production scanner
+  scan:
+    cmd: python -m src.scanner
+    deps:
+      - src/scanner.py
+      - src/math_utils.py
+      - src/fd_loader.py
+    params:
+      - scanner.lookback_window
+      - scanner.top_n
+    outs:
+      - picks_${timestamp}.csv:
+          cache: false

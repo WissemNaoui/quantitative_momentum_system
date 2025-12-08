@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Backtester service
+  backtester:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: momentum-system:latest
+    container_name: momentum-backtester
+    environment:
+      - FD_API_KEY=${FD_API_KEY}
+      - FINVIZ_API_TOKEN=${FINVIZ_API_TOKEN}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./.cache:/app/.cache
+      - ./mlruns:/app/mlruns
+    command: python -m src.backtester
+    networks:
+      - momentum-net
+
+  # Scanner service (daily stock picks)
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: momentum-system:latest
+    container_name: momentum-scanner
+    environment:
+      - FD_API_KEY=${FD_API_KEY}
+      - FINVIZ_API_TOKEN=${FINVIZ_API_TOKEN}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data
+      - ./.cache:/app/.cache
+    command: python -m src.scanner
+    networks:
+      - momentum-net
+
+  # MLflow UI for experiment tracking
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: momentum-system:latest
+    container_name: momentum-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/app/mlruns
+      - ./mlflow.db:/app/mlflow.db
+    command: mlflow ui --host 0.0.0.0 --port 5000
+    networks:
+      - momentum-net
+
+networks:
+  momentum-net:
+    driver: bridge
+
+volumes:
+  data:
+  models:
+  cache:
+  mlruns:

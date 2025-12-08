@@ -1,0 +1,88 @@
+name: Scheduled Backtest
+
+on:
+  schedule:
+    # Run every Sunday at 00:00 UTC (weekly backtest)
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      universe:
+        description: 'Stock universe (comma-separated)'
+        required: false
+        default: 'NVDA,AAPL,MSFT,TSLA,AMD,META,GOOGL'
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install dvc
+    
+    - name: Setup DVC
+      run: |
+        dvc remote list || echo "No DVC remote configured"
+        # dvc pull  # Uncomment when DVC remote is configured
+    
+    - name: Run backtester
+      env:
+        FD_API_KEY: ${{ secrets.FD_API_KEY }}
+        MLFLOW_TRACKING_URI: sqlite:///mlflow.db
+      run: |
+        python -m src.backtester
+    
+    - name: Extract best parameters
+      id: extract_params
+      run: |
+        # Parse MLflow results to find best parameters
+        # This is a placeholder - implement actual parsing
+        echo "best_lookback=20" >> $GITHUB_OUTPUT
+        echo "best_holding=10" >> $GITHUB_OUTPUT
+        echo "best_roi=0.45" >> $GITHUB_OUTPUT
+    
+    - name: Update scanner parameters
+      if: steps.extract_params.outputs.best_roi > 0.20
+      run: |
+        # Update params.yaml with winning parameters
+        sed -i "s/lookback_window: .*/lookback_window: ${{ steps.extract_params.outputs.best_lookback }}/" params.yaml
+    
+    - name: Upload backtest artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: backtest-results-${{ github.run_number }}
+        path: |
+          mlflow.db
+          mlruns/
+          trades.csv
+          curve.png
+        retention-days: 30
+    
+    - name: Commit updated parameters
+      if: steps.extract_params.outputs.best_roi > 0.20
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add params.yaml
+        git commit -m "🤖 Auto-update: Best params from backtest (ROI: ${{ steps.extract_params.outputs.best_roi }})" || echo "No changes"
+        git push || echo "Nothing to push"
+    
+    - name: Create backtest summary
+      run: |
+        echo "## 📊 Weekly Backtest Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Best Lookback:** ${{ steps.extract_params.outputs.best_lookback }} days" >> $GITHUB_STEP_SUMMARY
+        echo "**Best Holding:** ${{ steps.extract_params.outputs.best_holding }} days" >> $GITHUB_STEP_SUMMARY
+        echo "**ROI:** ${{ steps.extract_params.outputs.best_roi }}%" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "View full results in MLflow UI" >> $GITHUB_STEP_SUMMARY

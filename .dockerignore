@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data and models (pull from DVC instead)
+data/
+models/
+.cache/
+mlruns/
+mlflow.db
+
+# Generated files
+*.png
+*.csv
+*.log
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github/
+.dvc/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage (but keep test files)
+.coverage
+htmlcov/
+.pytest_cache/

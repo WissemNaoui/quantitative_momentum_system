@@ -1,14 +1,61 @@
-# Virtual Environment
-venv/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+.venv
 
-# MLflow and Database files (Usually too large or local specific)
+# Environment variables
+.env
+
+# Data and cache
+data/
+.cache/
+*.csv
+!data/.gitkeep
+
+# Models
+models/
+*.pkl
+*.zip
+!models/.gitkeep
+
+# MLflow
 mlruns/
 mlflow.db
 
-# Generated charts and data (Optional: keep these lines if you DO want to upload them)
-*.png
-*.csv
+# DVC
+.dvc/cache
+.dvc/tmp
+.dvc/config.local
 
-# System files
+# Generated files
+*.png
+*.log
+*.tar
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Docker
+*.tar
+docker-compose.override.yml
